@@ -1,235 +1,258 @@
-# 狼人杀游戏 - 9人标准局
+# AI Werewolf Game - 9 Players Standard Edition
 
-一个支持人类与AI混合对战的狼人杀游戏，使用AWS Bedrock的多种AI模型作为AI玩家。
+An AI-powered Werewolf (Mafia) game supporting human vs AI gameplay, using various AI models from AWS Bedrock as AI players.
 
-## 游戏特性
+## ✨ Features
 
-- **9人标准局配置**：3狼人 + 3村民 + 3神职（预言家、女巫、猎人）
-- **多种游戏模式**：
-  - 纯AI对战（观战模式）
-  - 1名人类 + 8名AI
-  - 自定义人类玩家数量（1-9人）
-- **多样化AI模型**：使用9个不同的AWS Bedrock AI模型，每个角色有独特的思维方式
-- **完整游戏流程**：包含夜晚行动、白天发言、投票放逐等完整环节
+- **9-Player Standard Setup**: 3 Werewolves + 3 Villagers + 3 Special Roles (Seer, Witch, Hunter)
+- **Multiple Game Modes**:
+  - Pure AI vs AI (spectator mode)
+  - 1 Human + 8 AI players
+  - Custom configuration (1-9 human players)
+- **Diverse AI Models**: Uses 9 different AWS Bedrock AI models, each with unique thinking patterns
+- **Complete Game Flow**: Night actions, day discussions, voting, and more
 
-## 角色配置
+## 🎭 Roles Configuration
 
-### 狼人阵营
-- **3名狼人**
-  - 每晚集体讨论并击杀1名玩家
-  - 互相认识队友
-  - 胜利条件：屠杀所有神职或所有平民
+### Werewolf Team
+- **3 Werewolves**
+  - Discuss tactics and kill 1 player each night
+  - Know each other's identities
+  - Win condition: Eliminate all special roles OR all villagers
 
-### 神职阵营
-- **预言家**
-  - 每晚可查验1名玩家的身份（好人/狼人）
-  - 需在白天引导好人阵营
+### Special Roles (Good Team)
+- **Seer** (Prophet)
+  - Can check 1 player's identity each night (Good/Werewolf)
+  - Guide the good team during discussions
 
-- **女巫**
-  - 拥有解药1瓶（救活当晚被杀的人）
-  - 拥有毒药1瓶（毒死1名玩家）
-  - 每晚最多使用1瓶药，同一晚不能同时使用两瓶
-  - 不能自救
+- **Witch**
+  - Has 1 Antidote (save the killed player)
+  - Has 1 Poison (kill 1 player)
+  - Can only use 1 potion per night
+  - Cannot save themselves
 
-- **猎人**
-  - 被狼人杀死或被投票放逐时，可开枪带走1名玩家
-  - 被女巫毒死不能开枪
+- **Hunter**
+  - When killed by werewolves or voted out, can shoot 1 player
+  - Cannot shoot if poisoned by witch
 
-### 平民阵营
-- **3名村民**
-  - 无特殊技能
-  - 通过逻辑推理找出狼人
+### Villagers
+- **3 Villagers**
+  - No special abilities
+  - Find werewolves through logical reasoning
 
-## AI模型分配
+## 🤖 AI Model Assignment
 
-当所有玩家都是AI时，默认模型分配如下：
+Default AI model distribution when all players are AI:
 
-| 角色 | AI模型 |
-|------|--------|
-| 狼人1 | claude-opus-4-20250514 |
-| 狼人2 | claude-sonnet-4-5-20250929 |
-| 狼人3 | claude-3-7-sonnet-20250219 |
-| 预言家 | claude-opus-4-1-20250805 |
-| 女巫 | claude-sonnet-4-20250514 |
-| 猎人 | claude-sonnet-4-5-20250929 |
-| 村民1 | claude-haiku-4-5-20251001 |
-| 村民2 | claude-3-7-sonnet-20250219 |
-| 村民3 | claude-haiku-4-5-20251001 |
+| Role | AI Model |
+|------|----------|
+| Werewolf 1 | claude-opus-4-20250514 |
+| Werewolf 2 | claude-sonnet-4-5-20250929 |
+| Werewolf 3 | claude-3-7-sonnet-20250219 |
+| Seer | claude-opus-4-1-20250805 |
+| Witch | claude-sonnet-4-20250514 |
+| Hunter | claude-sonnet-4-5-20250929 |
+| Villager 1 | claude-haiku-4-5-20251001 |
+| Villager 2 | claude-3-7-sonnet-20250219 |
+| Villager 3 | claude-haiku-4-5-20251001 |
 
-**注意**：已移除DeepSeek和Claude 3.5 Sonnet模型，因为它们在当前AWS区域不可用。
+**Note**: DeepSeek and Claude 3.5 Sonnet models have been removed as they are not available in the current AWS region.
 
-## 安装
+## 📦 Installation
 
-### 前置要求
+### Prerequisites
 
 - Python 3.8+
-- AWS账户，并配置好AWS凭证
-- 访问AWS Bedrock服务的权限
+- AWS Account with configured credentials
+- Access to AWS Bedrock service
 
-### 安装步骤
+### Setup Steps
 
-1. 克隆或下载项目：
+1. Clone or download the project:
 ```bash
 cd open_werewolf
 ```
 
-2. 创建虚拟环境（推荐）：
+2. Create virtual environment (recommended):
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
-# 或
+# or
 venv\Scripts\activate  # Windows
 ```
 
-3. 安装依赖：
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. 配置AWS凭证：
+4. Configure AWS credentials:
 
-确保你的AWS凭证已正确配置。可以通过以下方式之一：
+Ensure your AWS credentials are properly configured using one of these methods:
 
-- **方式1：使用AWS CLI配置**
+- **Method 1: AWS CLI Configuration**
   ```bash
   aws configure
   ```
 
-- **方式2：设置环境变量**
+- **Method 2: Environment Variables**
   ```bash
   export AWS_ACCESS_KEY_ID=your_access_key
   export AWS_SECRET_ACCESS_KEY=your_secret_key
   export AWS_DEFAULT_REGION=us-west-2
   ```
 
-- **方式3：使用.env文件**
+- **Method 3: .env File**
   ```bash
   cp .env.example .env
-  # 编辑.env文件，填入你的AWS凭证
+  # Edit .env file and fill in your AWS credentials
   ```
 
-## 使用方法
+## 🎮 Usage
 
-### 启动游戏
+### Starting the Game
 
 ```bash
 python main.py
 ```
 
-### 游戏模式选择
+### Game Mode Selection
 
-启动游戏后，你需要选择人类玩家数量：
+After starting, select the number of human players:
 
-- **0** - 纯AI对战（观战模式）：观看9个AI互相博弈
-- **1** - 1名人类玩家 + 8名AI：你将参与游戏
-- **2-9** - 自定义人类玩家数量
+- **0** - Pure AI battle (spectator mode): Watch 9 AIs play against each other
+- **1** - 1 human player + 8 AI players: You participate in the game
+- **2-9** - Custom number of human players
 
-### 游戏流程
+### Game Flow
 
-1. **角色分配**：游戏开始时随机分配角色
-2. **夜晚阶段**：
-   - 狼人讨论并选择击杀目标
-   - 预言家查验玩家身份
-   - 女巫决定是否使用解药或毒药
-3. **白天阶段**：
-   - 宣布死亡信息
-   - 遗言环节
-   - 玩家依次发言
-   - 投票放逐
-4. **重复2-3步直到游戏结束**
+1. **Role Assignment**: Roles are randomly assigned at game start
+2. **Night Phase**:
+   - Werewolves discuss and choose kill target
+   - Seer checks a player's identity
+   - Witch decides whether to use antidote or poison
+3. **Day Phase**:
+   - Announce deaths
+   - Last words from dead players
+   - Players speak in turn
+   - Vote to exile a player
+4. **Repeat steps 2-3 until game ends**
 
-### 人类玩家操作
+### Human Player Actions
 
-如果你是人类玩家，在轮到你时：
+If you're a human player, when it's your turn:
 
-- **夜晚行动**：根据提示输入玩家编号（如：1）
-- **白天发言**：输入你的发言内容
-- **投票**：输入你要投票的玩家编号
+- **Night Actions**: Enter player number based on prompts (e.g., 1)
+- **Day Speech**: Enter your speech content
+- **Voting**: Enter the player number you want to vote for
 
-## 项目结构
+## 📁 Project Structure
 
 ```
 open_werewolf/
-├── main.py                 # 主程序入口
-├── requirements.txt        # 项目依赖
-├── README.md              # 项目文档
-├── .env.example           # 环境变量示例
-├── .gitignore            # Git忽略文件
+├── main.py                 # Main entry point
+├── requirements.txt        # Dependencies
+├── README.md              # Documentation
+├── CHANGELOG.md           # Update history
+├── QUICK_START.md         # Quick start guide
+├── .env.example           # Environment variables example
+├── .gitignore            # Git ignore file
+├── docs/                 # Technical documentation
+│   ├── GAMEPLAY.md       # Gameplay rules
+│   ├── FAQ.md           # Frequently asked questions
+│   └── ...
 └── src/
     ├── __init__.py
-    ├── game/             # 游戏逻辑
+    ├── game/             # Game logic
     │   ├── __init__.py
     │   └── werewolf_game.py
-    ├── models/           # 角色模型
+    ├── models/           # Role models
     │   ├── __init__.py
     │   └── roles.py
-    ├── players/          # 玩家系统
+    ├── players/          # Player system
     │   ├── __init__.py
     │   └── player.py
-    └── utils/            # 工具模块
+    └── utils/            # Utility modules
         ├── __init__.py
         └── llm_client.py
 ```
 
-## 技术特性
+## 🚀 Key Features
 
-- **面向对象设计**：清晰的类层次结构
-- **AI记忆系统**：AI玩家会记住游戏中的关键信息
-- **智能决策**：基于大语言模型的推理和决策
-- **完整规则实现**：严格按照9人局标准规则
+- **Werewolf Night Tactics Discussion**: Werewolves discuss strategy before killing
+- **Day Strategy Planning**: Coordinate deception tactics during the day
+- **Secret Voting System**: All players vote simultaneously without seeing others' choices
+- **Proper Last Words Rules**: Only first night and voted-out players get last words
+- **Logical Consistency Checks**: AI maintains consistent behavior with their claims
+- **Tactical Flexibility**: AI can break patterns when victory is assured (werewolf rush)
+- **Object-Oriented Design**: Clean class hierarchy
+- **AI Memory System**: AI players remember key game information
+- **Intelligent Decision-Making**: Reasoning and decisions based on large language models
+- **Complete Rules Implementation**: Strictly follows 9-player standard rules
 
-## 注意事项
+## ⚠️ Important Notes
 
-1. **AWS费用**：使用AWS Bedrock会产生费用，请注意控制调用次数
-2. **模型可用性**：确保你的AWS账户有权限访问所有使用的模型
-3. **游戏时长**：纯AI对战可能较长，建议耐心观看
-4. **网络连接**：需要稳定的网络连接到AWS服务
+1. **AWS Costs**: Using AWS Bedrock incurs charges, monitor your usage
+2. **Model Availability**: Ensure your AWS account has access to all used models
+3. **Game Duration**: Pure AI battles may be lengthy, patience recommended
+4. **Network Connection**: Requires stable connection to AWS services
 
-## 开发说明
+## 🛠️ Development
 
-### 添加新模型
+### Adding New Models
 
-在 `src/utils/llm_client.py` 中修改 `DEFAULT_MODEL_ASSIGNMENT` 字典来自定义模型分配。
+Modify the `DEFAULT_MODEL_ASSIGNMENT` dictionary in `src/utils/llm_client.py` to customize model assignments.
 
-### 调整游戏规则
+### Adjusting Game Rules
 
-在 `src/game/werewolf_game.py` 中可以修改游戏流程和规则。
+Modify game flow and rules in `src/game/werewolf_game.py`.
 
-### 自定义角色
+### Custom Roles
 
-在 `src/models/roles.py` 中可以添加新的角色类型。
+Add new role types in `src/models/roles.py`.
 
-## 故障排除
+## 🔧 Troubleshooting
 
-### 问题：AWS认证失败
+### Issue: AWS Authentication Failed
 
-**解决方案**：
-- 检查AWS凭证是否正确配置
-- 确保AWS账户有Bedrock服务权限
-- 检查区域设置是否为 `us-west-2`
+**Solution**:
+- Check if AWS credentials are correctly configured
+- Ensure AWS account has Bedrock service permissions
+- Verify region is set to `us-west-2`
 
-### 问题：模型调用失败
+### Issue: Model Call Failed
 
-**解决方案**：
-- 确认模型在你的区域可用
-- 检查是否有足够的配额
-- 查看AWS控制台的Bedrock服务状态
+**Solution**:
+- Confirm model is available in your region
+- Check if you have sufficient quota
+- Review Bedrock service status in AWS console
 
-### 问题：游戏卡住
+### Issue: Game Stuck
 
-**解决方案**：
-- 检查网络连接
-- 查看控制台错误信息
-- 使用 Ctrl+C 中断程序
+**Solution**:
+- Check network connection
+- Review console error messages
+- Use Ctrl+C to interrupt the program
 
-## 许可证
+## 📝 Recent Updates
 
-本项目仅供学习和娱乐使用。
+- ✅ Fixed player name information leak (now using generic names)
+- ✅ Implemented proper last words rules
+- ✅ Added werewolf team coordination and strategy discussion
+- ✅ Enhanced voting logic consistency checks
+- ✅ Improved tactical flexibility (werewolf rush when advantageous)
+- ✅ Organized documentation structure
 
-## 贡献
+See [CHANGELOG.md](CHANGELOG.md) for detailed update history.
 
-欢迎提交问题和改进建议！
+## 📄 License
 
-## 联系方式
+This project is for educational and entertainment purposes only.
 
-如有问题，请创建 Issue。
+## 🤝 Contributing
+
+Issues and improvement suggestions are welcome!
+
+## 📧 Contact
+
+For questions, please create an Issue.
