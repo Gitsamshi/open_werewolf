@@ -18,6 +18,10 @@ class WerewolfGame:
         self.last_night_first_death: Optional[Player] = None  # 昨晚第一个死亡的玩家（用于确定发言顺序）
         self.last_night_deaths: List[Player] = []  # 昨晚所有死亡的玩家（用于宣布死亡）
 
+        # 警长系统
+        self.sheriff: Optional[Player] = None  # 当前警长
+        self.sheriff_election_done = False  # 警长竞选是否已完成
+
     def setup_game(self, human_player_count: int = 0):
         """
         设置游戏
@@ -154,8 +158,8 @@ class WerewolfGame:
         # 女巫行动（返回修改后的wolf_kill_target和poison_target）
         wolf_kill_target, witch_poison_target = self._witch_action(wolf_kill_target)
 
-        # 处理夜晚死亡
-        self._process_night_deaths(wolf_kill_target, witch_poison_target)
+        # 处理夜晚死亡（分步处理，确保正确的胜负判定）
+        self._process_night_deaths_with_victory_check(wolf_kill_target, witch_poison_target)
 
     def _werewolves_action(self) -> Optional[Player]:
         """狼人行动"""
@@ -285,20 +289,41 @@ class WerewolfGame:
                 alive_wolves_tomorrow = len([w for w in werewolves if w.is_alive])
                 alive_goods_tomorrow = len([p for p in alive_players_tomorrow if not p.is_werewolf()])
                 
+                # 第一天增加上警战术讨论
+                sheriff_strategy = ""
+                if self.day_count == 0:
+                    sheriff_strategy = """
+⚠️ 明天是第一天，有警长竞选（上警）！
+
+上警战术要点：
+1. **谁应该上警**：
+   - 如果有狼计划悍跳预言家，**必须上警**争夺警徽
+   - 其他狼可以选择性上警（做倒钩或深水）
+   - **不要全狼都上警或都不上警**（容易暴露）
+   - 通常1-2名狼上警比较合理
+2. **上警后怎么做**：
+   - 悍跳狼：竞选发言时假装预言家，报首夜查验
+   - 倒钩狼：上警装好人，支持真预言家获取信任
+3. **如何协调**：
+   - 提前约定谁悍跳、谁深水、谁倒钩
+   - 避免多狼同时跳预言家（会自爆）
+
+"""
+                
                 prompt = f"""你们刚决定今晚击杀玩家{final_target.player_id}。现在讨论明天（第{self.day_count + 1}天）白天的战术。
 
 你的狼人队友有：{', '.join([f'玩家{w.player_id}' for w in werewolves if w.player_id != wolf.player_id])}
 
 明天存活的玩家预计有：{', '.join([f'玩家{p.player_id}' for p in alive_players_tomorrow])}
 明天的局势：预计{alive_wolves_tomorrow}狼 vs {alive_goods_tomorrow}好人
-
+{sheriff_strategy}
 ⚠️ 战术判断：
 - 如果明天狼人数量 ≥ 好人数量，可以考虑**狼人冲锋**（不伪装，直接集票推神职）
 - 如果明天能一票推掉关键神职直接获胜，就不需要继续伪装了
 - 如果局势还需要隐蔽，继续使用伪装战术
 
-请简要制定明天的战术计划（100字以内），包括：
-1. 判断明天是否需要狼人冲锋？还是继续伪装？
+请简要制定明天的战术计划（150字以内），包括：
+1. {'**上警决策**：你是否上警？为什么？（悍跳/倒钩/深水）' if self.day_count == 0 else '判断明天是否需要狼人冲锋？还是继续伪装？'}
 2. 你的伪装策略（悍跳预言家/女巫/猎人？还是装村民？）
 3. 如果悍跳神职，你计划给谁发金水/查杀？（可以给狼队友发金水，或查杀好人）
 4. 是否配合队友使用狼打狼战术？（狼查杀狼/狼打狼）
@@ -458,9 +483,53 @@ class WerewolfGame:
 
         return wolf_kill_target, poison_target
 
+    def _process_night_deaths_with_victory_check(self, wolf_kill_target: Optional[Player],
+                                                 witch_poison_target: Optional[Player]):
+        """处理夜晚死亡（分步检查胜负，确保正确的胜利判定）"""
+        deaths = []
+
+        # 第一步：处理狼人击杀
+        if wolf_kill_target and wolf_kill_target.is_alive:
+            wolf_kill_target.die("wolf_kill")
+            deaths.append(wolf_kill_target)
+
+            # 狼刀后立即检查游戏是否结束（狼人优先）
+            if self._check_game_over():
+                # 游戏已结束，记录死亡信息但不继续处理女巫毒人
+                self.last_night_deaths = deaths.copy()
+                if deaths:
+                    self.last_night_first_death = deaths[0]
+                if self.day_count == 0:
+                    self.last_words_queue.extend(deaths)
+                return
+
+        # 第二步：处理女巫毒人（仅在游戏未结束时）
+        if witch_poison_target and witch_poison_target.is_alive:
+            witch_poison_target.die("poison")
+            deaths.append(witch_poison_target)
+            # 猎人被毒死不能开枪
+            if witch_poison_target.role.get_role_type() == RoleType.HUNTER:
+                hunter_role: Hunter = witch_poison_target.role
+                hunter_role.disable_shoot()
+
+        # 保存昨晚所有死亡的玩家（用于宣布死亡）
+        self.last_night_deaths = deaths.copy()
+
+        # 记录第一个死亡的玩家（用于确定发言顺序）
+        if deaths:
+            self.last_night_first_death = deaths[0]
+        else:
+            self.last_night_first_death = None
+
+        # 遗言规则：只有首夜死亡的玩家才有遗言，第二夜及之后的夜晚死亡没有遗言
+        if self.day_count == 0:  # 首夜
+            # 首夜死亡的玩家有遗言
+            self.last_words_queue.extend(deaths)
+        # else: 第二夜及之后的夜晚死亡，不加入遗言队列
+
     def _process_night_deaths(self, wolf_kill_target: Optional[Player],
                              witch_poison_target: Optional[Player]):
-        """处理夜晚死亡"""
+        """处理夜晚死亡（旧版本，保留用于兼容性）"""
         deaths = []
 
         if wolf_kill_target and wolf_kill_target.is_alive:
@@ -477,7 +546,7 @@ class WerewolfGame:
 
         # 保存昨晚所有死亡的玩家（用于宣布死亡）
         self.last_night_deaths = deaths.copy()
-        
+
         # 记录第一个死亡的玩家（用于确定发言顺序）
         if deaths:
             self.last_night_first_death = deaths[0]
@@ -510,6 +579,10 @@ class WerewolfGame:
         alive_players = [p for p in self.players if p.is_alive]
         if len(alive_players) < 2:
             return
+
+        # 首日白天：警长竞选
+        if self.day_count == 1 and not self.sheriff_election_done:
+            self._sheriff_election()
 
         # 发言阶段
         self._speech_phase()
@@ -551,25 +624,39 @@ class WerewolfGame:
             print(f"\n玩家{player.player_id}的遗言：")
 
             context = {"is_last_words": True}
-            
+
+            # 获取存活玩家列表（用于遗言中推荐投票目标）
+            alive_players = [p for p in self.players if p.is_alive]
+            alive_player_ids = [p.player_id for p in alive_players]
+
             # 根据角色给出不同的遗言提示
             if player.is_werewolf():
-                prompt = f"""你已经死亡。请发表你的遗言。
+                prompt = f"""⚠️ 你是玩家{player.player_id}，你已经死亡。现在请发表你的遗言。
+
+当前存活的玩家：{', '.join([f'玩家{pid}' for pid in alive_player_ids])}
 
 ⚠️ 关键提醒：你是狼人，遗言是为团队服务的最后机会！
 - ❌ 绝对不要承认自己是狼人！
 - ❌ 绝对不要透露或暗示队友身份！
+- ❌ 不要推荐投你自己（你已经死了！）
 - ✅ 坚持你之前的伪装身份到底
 - ✅ 误导好人，保护队友
 - ✅ 制造混乱，为狼队争取胜利机会
+- ✅ 推荐投票目标时，只能从存活玩家中选择
 
 请发表遗言（继续扮演你之前的角色）："""
             else:
-                prompt = f"""你已经死亡。请发表你的遗言。
+                prompt = f"""⚠️ 你是玩家{player.player_id}，你已经死亡。现在请发表你的遗言。
+
+当前存活的玩家：{', '.join([f'玩家{pid}' for pid in alive_player_ids])}
+
 你可以：
 - 透露你的身份和信息
 - 给存活的玩家提供线索
-- 表达你的推理和怀疑"""
+- 表达你的推理和怀疑
+- 推荐投票目标（只能从存活玩家中选择）
+
+⚠️ 注意：不要推荐投你自己（你已经死了！）"""
 
             last_words = player.get_speech(prompt, context)
             print(f"  {last_words}")
@@ -578,6 +665,10 @@ class WerewolfGame:
             for p in self.players:
                 if isinstance(p, AIPlayer) and p.is_alive:
                     p.add_memory(f"玩家{player.player_id}遗言：{last_words[:100]}")  # 截取前100字
+
+            # 警徽传递
+            if self.sheriff and player.player_id == self.sheriff.player_id:
+                self._sheriff_pass_badge(player)
 
             # 猎人技能
             if player.role.get_role_type() == RoleType.HUNTER:
@@ -652,22 +743,55 @@ class WerewolfGame:
                 alive_players = reordered_players
                 print(f"（从玩家{self.last_night_first_death.player_id}的右边开始发言）")
 
-        for player in alive_players:
+        # 警长归票权：警长最后发言
+        if self.sheriff and self.sheriff.is_alive and self.sheriff in alive_players:
+            alive_players.remove(self.sheriff)
+            alive_players.append(self.sheriff)
+            print(f"（警长玩家{self.sheriff.player_id}拥有归票权，将最后发言）")
+
+        for idx, player in enumerate(alive_players):
             print(f"\n玩家{player.player_id}发言：")
+
+            # 计算发言顺序信息
+            current_position = idx + 1
+            total_alive = len(alive_players)
+            players_spoke_before = [p.player_id for p in alive_players[:idx]]
+            players_to_speak_after = [p.player_id for p in alive_players[idx+1:]]
+
+            # 构建发言顺序说明
+            if players_spoke_before:
+                spoke_before_text = f"\n已发言的玩家：{', '.join([f'玩家{pid}' for pid in players_spoke_before])}"
+            else:
+                spoke_before_text = "\n⚠️ 你是第一个发言的玩家"
+
+            if players_to_speak_after:
+                to_speak_after_text = f"\n未发言的玩家：{', '.join([f'玩家{pid}' for pid in players_to_speak_after])}"
+            else:
+                to_speak_after_text = "\n⚠️ 你是最后一个发言的玩家"
 
             context = {
                 "alive_players": [f"玩家{p.player_id}" for p in alive_players],
-                "day": self.day_count
+                "day": self.day_count,
+                "position": current_position,
+                "total": total_alive
             }
 
             prompt = f"""现在是第{self.day_count}天的发言阶段。
 
 存活的玩家：{', '.join([f'玩家{p.player_id}' for p in [p for p in self.players if p.is_alive]])}
 
+⚠️ 发言顺序（你是第{current_position}/{total_alive}位发言）：{spoke_before_text}{to_speak_after_text}
+
+⚠️ 重要：
+- 只有在你之前发言的玩家，你才知道他们说了什么
+- 在你之后发言的玩家，你不可能知道他们会说什么
+- 不要分析或提到还未发言玩家的观点
+
 请发表你的观点：
 - 分享你的信息和推理
 - 指出你怀疑的对象
-- 为自己辩护（如果需要）"""
+- 为自己辩护（如果需要）
+- 可以回应之前发言的玩家"""
 
             speech = player.get_speech(prompt, context)
             print(f"  {speech}")
@@ -744,19 +868,33 @@ class WerewolfGame:
             else:
                 print(f"  ⚠️ 玩家{player.player_id} 的投票无效")
 
-        # 统计票数
+        # 统计票数（考虑警长1.5倍投票权）
         print("\n投票结果：")
+        vote_counts: Dict[int, float] = {}  # 使用浮点数统计票数
+
         for player_id, voters in votes.items():
+            total_votes = 0.0
+            for voter_id in voters:
+                # 检查投票者是否是警长
+                if self.sheriff and voter_id == self.sheriff.player_id:
+                    total_votes += 1.5  # 警长的票算1.5票
+                else:
+                    total_votes += 1.0
+            vote_counts[player_id] = total_votes
+
             if voters:
-                print(f"  玩家{player_id}: {len(voters)}票 (来自 {voters})")
+                sheriff_marker = ""
+                if self.sheriff and self.sheriff.player_id in voters:
+                    sheriff_marker = " (包含警长1.5票)"
+                print(f"  玩家{player_id}: {total_votes}票{sheriff_marker} (来自 {voters})")
 
         # 找出得票最多的玩家
-        max_votes = max(len(v) for v in votes.values())
+        max_votes = max(vote_counts.values()) if vote_counts else 0
         if max_votes == 0:
             print("\n没有人被放逐")
             return
 
-        max_voted_players = [pid for pid, v in votes.items() if len(v) == max_votes]
+        max_voted_players = [pid for pid, count in vote_counts.items() if count == max_votes]
 
         if len(max_voted_players) > 1:
             print(f"\n平票！玩家 {max_voted_players} 将进行PK")
@@ -805,6 +943,298 @@ class WerewolfGame:
             return True
 
         return False
+
+    def _sheriff_election(self):
+        """警长竞选"""
+        print("\n" + "="*60)
+        print("警长竞选（上警）")
+        print("="*60)
+
+        alive_players = [p for p in self.players if p.is_alive]
+
+        # 第一阶段：询问所有玩家是否要上警
+        print("\n请决定是否参与警长竞选...")
+        candidates = []
+
+        for player in alive_players:
+            context = {"is_sheriff_election": True}
+            
+            # 根据角色给出不同的上警建议
+            role_guidance = ""
+            if player.role.get_role_type() == RoleType.SEER:
+                role_guidance = """
+⚠️ 你是预言家：
+- **强烈建议上警**争夺警徽，引导好人阵营
+- 警徽可以增加你的发言权重
+- 如果有狼人悍跳，必须上警对抗"""
+            elif player.role.get_role_type() in [RoleType.WITCH, RoleType.HUNTER]:
+                role_guidance = """
+⚠️ 你是神职（女巫/猎人）：
+- **可以选择性上警**，但要考虑暴露风险
+- 如果上警，可以帮助好人获得主导权
+- 也可以选择不上警，隐藏身份保护自己"""
+            elif player.role.get_role_type() == RoleType.VILLAGER:
+                role_guidance = """
+⚠️ 你是村民：
+- **可以选择性上警**，混淆狼人视野
+- 如果逻辑能力强，可以上警帮助好人
+- 新手建议不上警，避免成为目标"""
+            elif player.is_werewolf():
+                role_guidance = """
+⚠️ 你是狼人：
+- 如果计划**悍跳预言家**，**必须上警**争夺警徽
+- 如果不悍跳，可以选择性上警做倒钩（站好人队）
+- 注意：不要全狼都上警或都不上警（容易暴露）
+- 根据狼队友的位置和策略决定"""
+            
+            prompt = f"""现在是警长竞选阶段。
+
+⚠️ 警长权利：
+- 拥有1.5倍投票权（你的一票相当于1.5票）
+- 拥有归票权（最后发言，引导投票方向）
+- 死亡时可以选择将警徽传给其他玩家
+
+⚠️ 警长风险：
+- 成为狼人优先攻击目标
+- 如果是神职，容易暴露身份
+- 如果表现不佳，容易被怀疑
+{role_guidance}
+
+⚠️ 上警一般原则：
+- 神职牌（特别是预言家）优先上警
+- 狼人如果要悍跳预言家，必须上警
+- 不要全员上警或全员不上警（容易暴露阵营）
+- 通常3-4人上警较为合理
+
+请问你是否要参与警长竞选（上警）？
+请回答：是 或 否"""
+
+            decision = player.make_decision(prompt, context)
+
+            # 解析决策
+            decision_lower = decision.strip().lower()
+            wants_to_run = any(keyword in decision_lower for keyword in ["是", "yes", "上警", "参与", "竞选"])
+
+            if wants_to_run:
+                candidates.append(player)
+                print(f"  玩家{player.player_id} 选择上警")
+            else:
+                print(f"  玩家{player.player_id} 选择不上警")
+
+        if not candidates:
+            print("\n没有玩家选择上警，本局无警长。")
+            self.sheriff_election_done = True
+            return
+
+        if len(candidates) == 1:
+            self.sheriff = candidates[0]
+            print(f"\n只有玩家{self.sheriff.player_id}上警，自动当选警长！")
+            self._announce_sheriff_elected(self.sheriff)
+            self.sheriff_election_done = True
+            return
+
+        # 第二阶段：竞选发言
+        print(f"\n上警玩家：{', '.join([f'玩家{p.player_id}' for p in candidates])}")
+        print("\n竞选发言阶段")
+        print("-"*60)
+
+        for candidate in candidates:
+            print(f"\n玩家{candidate.player_id}竞选发言：")
+
+            context = {"is_sheriff_campaign": True}
+            prompt = f"""你已选择上警竞选警长。现在请发表你的竞选发言。
+
+上警的玩家：{', '.join([f'玩家{p.player_id}' for p in candidates])}
+
+竞选发言要点：
+- 说明你为什么适合当警长
+- 可以暗示或明示自己的身份（例如：我有身份、我是神、我是预言家等）
+- 展示你的推理能力和判断
+- 获得其他玩家的信任
+
+请发表竞选发言（100-150字）："""
+
+            speech = candidate.get_speech(prompt, context)
+            print(f"  {speech}")
+
+            # 广播给其他玩家
+            for p in self.players:
+                if isinstance(p, AIPlayer) and p.is_alive and p.player_id != candidate.player_id:
+                    p.add_memory(f"警长竞选：玩家{candidate.player_id}发言：{speech[:80]}")
+
+        # 第2.5阶段：退水环节（发言后、投票前）
+        print("\n" + "-"*60)
+        print("退水环节（候选人可以选择退出竞选）")
+        print("-"*60)
+
+        withdrawn_candidates = []
+
+        for candidate in candidates:
+            context = {"is_withdraw_decision": True}
+            prompt = f"""竞选发言已结束，现在是退水环节。你可以选择退出警长竞选（退水）。
+
+当前上警玩家：{', '.join([f'玩家{p.player_id}' for p in candidates])}
+
+⚠️ 退水考虑因素：
+- 如果你是狼人，听到真预言家跳了，可能需要退水
+- 如果你是好人，但觉得其他候选人更合适，可以退水
+- 如果你是神职，但不想暴露，可以退水
+- 退水会让你看起来可疑，但也可能是战术性选择
+
+请问你是否要退水（退出竞选）？
+请回答：退水 或 不退"""
+
+            decision = candidate.make_decision(prompt, context)
+
+            # 解析决策
+            decision_lower = decision.strip().lower()
+            wants_to_withdraw = any(keyword in decision_lower for keyword in ["退水", "退出", "退", "withdraw", "quit"])
+
+            if wants_to_withdraw:
+                withdrawn_candidates.append(candidate)
+                print(f"  玩家{candidate.player_id} 选择退水")
+
+                # 广播给其他玩家
+                for p in self.players:
+                    if isinstance(p, AIPlayer) and p.is_alive:
+                        p.add_memory(f"警长竞选：玩家{candidate.player_id}退水")
+            else:
+                print(f"  玩家{candidate.player_id} 不退水")
+
+        # 更新候选人列表（移除退水的玩家）
+        candidates = [c for c in candidates if c not in withdrawn_candidates]
+
+        if not candidates:
+            print("\n所有候选人都退水了，本局无警长。")
+            self.sheriff_election_done = True
+            return
+
+        if len(candidates) == 1:
+            self.sheriff = candidates[0]
+            print(f"\n退水后只剩一名候选人，玩家{self.sheriff.player_id}自动当选警长！")
+            self._announce_sheriff_elected(self.sheriff)
+            self.sheriff_election_done = True
+            return
+
+        print(f"\n退水后剩余候选人：{', '.join([f'玩家{p.player_id}' for p in candidates])}")
+
+        # 第三阶段：投票选举
+        print("\n" + "-"*60)
+        print("警长投票阶段")
+        print("-"*60)
+
+        non_candidates = [p for p in alive_players if p not in candidates]
+
+        if not non_candidates:
+            # 所有人都上警，没有警下玩家可以投票 → 警徽流失
+            print(f"\n所有玩家都上警，无警下玩家投票，警徽流失！本局无警长。")
+            self.sheriff = None
+            self.sheriff_election_done = True
+            return
+
+        # 未上警的玩家投票
+        votes: Dict[int, List[int]] = {p.player_id: [] for p in candidates}
+
+        print("\n未上警的玩家（警下）正在投票...")
+
+        for voter in non_candidates:
+            context = {"sheriff_candidates": [p.player_id for p in candidates]}
+            prompt = f"""现在进行警长投票。你是警下玩家（未上警），需要投票选出警长。
+
+候选人：{', '.join([f'玩家{p.player_id}' for p in candidates])}
+
+请根据他们的竞选发言，选择你认为最适合担任警长的玩家。
+
+请投票给一名候选人（直接回答玩家编号）："""
+
+            decision = voter.make_decision(prompt, context)
+            target = self._parse_player_id(decision, candidates)
+
+            if target:
+                votes[target.player_id].append(voter.player_id)
+
+        # 统计票数
+        print("\n投票结果：")
+        for candidate in candidates:
+            voter_ids = votes[candidate.player_id]
+            print(f"  玩家{candidate.player_id}: {len(voter_ids)}票")
+
+        # 找出得票最多的候选人
+        max_votes = max(len(votes[c.player_id]) for c in candidates)
+        winners = [c for c in candidates if len(votes[c.player_id]) == max_votes]
+
+        if len(winners) == 1:
+            self.sheriff = winners[0]
+        else:
+            # 平票，随机选一个
+            self.sheriff = random.choice(winners)
+            print(f"\n警长选举平票，随机选出警长：玩家{self.sheriff.player_id}")
+
+        self._announce_sheriff_elected(self.sheriff)
+        self.sheriff_election_done = True
+
+    def _announce_sheriff_elected(self, sheriff: Player):
+        """宣布警长当选"""
+        print(f"\n{'='*60}")
+        print(f"🎖️ 玩家{sheriff.player_id} 当选警长！")
+        print(f"{'='*60}")
+
+        # 广播给所有AI玩家
+        for p in self.players:
+            if isinstance(p, AIPlayer) and p.is_alive:
+                p.add_memory(f"玩家{sheriff.player_id}当选警长")
+
+    def _sheriff_pass_badge(self, dead_sheriff: Player):
+        """警长死亡后传递警徽"""
+        print(f"\n警长玩家{dead_sheriff.player_id}死亡，可以选择将警徽传递给其他玩家...")
+
+        alive_players = [p for p in self.players if p.is_alive]
+
+        if not alive_players:
+            print("没有存活玩家可以继承警徽")
+            self.sheriff = None
+            return
+
+        context = {"is_sheriff_passing": True}
+        prompt = f"""⚠️ 你是警长，你已经死亡。现在你可以选择将警徽传递给一名存活的玩家。
+
+存活的玩家：{', '.join([f'玩家{p.player_id}' for p in alive_players])}
+
+⚠️ 警徽传递策略：
+- 如果你是好人阵营，传给你认为最可信的好人或神职
+- 如果你是狼人阵营，传给你的狼队友或伪装好的队友
+- 也可以选择不传（撕毁警徽），回答"不传"或"撕掉"
+
+请选择继承警徽的玩家（直接回答玩家编号，或"不传"）："""
+
+        decision = dead_sheriff.make_decision(prompt, context)
+
+        # 解析决策
+        decision_lower = decision.strip().lower()
+        if any(keyword in decision_lower for keyword in ["不传", "撕掉", "撕毁", "no", "none", "撕"]):
+            print(f"\n警长选择撕毁警徽，本局不再有警长")
+            self.sheriff = None
+
+            # 广播
+            for p in self.players:
+                if isinstance(p, AIPlayer) and p.is_alive:
+                    p.add_memory(f"警长玩家{dead_sheriff.player_id}撕毁警徽")
+        else:
+            target = self._parse_player_id(decision, alive_players)
+
+            if target:
+                self.sheriff = target
+                print(f"\n{'='*60}")
+                print(f"🎖️ 警徽传递给玩家{target.player_id}！")
+                print(f"{'='*60}")
+
+                # 广播
+                for p in self.players:
+                    if isinstance(p, AIPlayer) and p.is_alive:
+                        p.add_memory(f"警徽从玩家{dead_sheriff.player_id}传递给玩家{target.player_id}")
+            else:
+                print(f"\n警长未做出有效选择，警徽撕毁")
+                self.sheriff = None
 
     def _show_game_result(self):
         """显示游戏结果"""
