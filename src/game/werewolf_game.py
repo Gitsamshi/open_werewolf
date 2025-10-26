@@ -955,39 +955,47 @@ class WerewolfGame:
         # 第一阶段：询问所有玩家是否要上警
         print("\n请决定是否参与警长竞选...")
         candidates = []
+        
+        # 随机打乱玩家顺序，增加随机性
+        import random
+        shuffled_players = alive_players.copy()
+        random.shuffle(shuffled_players)
 
-        for player in alive_players:
+        for player in shuffled_players:
             context = {"is_sheriff_election": True}
             
             # 根据角色给出不同的上警建议
+            current_candidates_count = len(candidates)
+            current_candidates_info = f"\n当前已有 {current_candidates_count} 人上警。" if current_candidates_count > 0 else "\n目前还没有人上警。"
+            
             role_guidance = ""
             if player.role.get_role_type() == RoleType.SEER:
-                role_guidance = """
+                role_guidance = f"""
 ⚠️ 你是预言家：
-- **强烈建议上警**争夺警徽，引导好人阵营
+- 建议上警争夺警徽，引导好人阵营
 - 警徽可以增加你的发言权重
-- 如果有狼人悍跳，必须上警对抗"""
+- 如果已有2-3人上警，可以考虑竞争；如果太多人（5+）上警可能不上"""
             elif player.role.get_role_type() in [RoleType.WITCH, RoleType.HUNTER]:
-                role_guidance = """
+                role_guidance = f"""
 ⚠️ 你是神职（女巫/猎人）：
-- **可以选择性上警**，但要考虑暴露风险
-- 如果上警，可以帮助好人获得主导权
-- 也可以选择不上警，隐藏身份保护自己"""
+- 可以选择性上警，但要考虑暴露风险
+- 如果上警人数较少（0-2人），可以考虑上警
+- 如果已有3+人上警，建议不上警保护自己"""
             elif player.role.get_role_type() == RoleType.VILLAGER:
-                role_guidance = """
+                role_guidance = f"""
 ⚠️ 你是村民：
-- **可以选择性上警**，混淆狼人视野
-- 如果逻辑能力强，可以上警帮助好人
-- 新手建议不上警，避免成为目标"""
+- 可以选择性上警，混淆狼人视野
+- 如果上警人数少（0-1人），可以考虑上警
+- 如果已有3+人上警，建议不上警"""
             elif player.is_werewolf():
-                role_guidance = """
+                role_guidance = f"""
 ⚠️ 你是狼人：
-- 如果计划**悍跳预言家**，**必须上警**争夺警徽
-- 如果不悍跳，可以选择性上警做倒钩（站好人队）
-- 注意：不要全狼都上警或都不上警（容易暴露）
-- 根据狼队友的位置和策略决定"""
+- 如果计划悍跳预言家，建议上警争夺警徽
+- 如果不悍跳，根据上警人数决定（2-3人上警时可以考虑）
+- 注意：狼队友的决策（避免全狼上警或都不上警）"""
             
             prompt = f"""现在是警长竞选阶段。
+{current_candidates_info}
 
 ⚠️ 警长权利：
 - 拥有1.5倍投票权（你的一票相当于1.5票）
@@ -1001,10 +1009,11 @@ class WerewolfGame:
 {role_guidance}
 
 ⚠️ 上警一般原则：
-- 神职牌（特别是预言家）优先上警
-- 狼人如果要悍跳预言家，必须上警
-- 不要全员上警或全员不上警（容易暴露阵营）
-- 通常3-4人上警较为合理
+- 神职牌（特别是预言家）优先上警，但要考虑竞争情况
+- 狼人如果要悍跳预言家，通常需要上警
+- 避免全员上警或全员不上警（容易暴露阵营）
+- **通常3-4人上警较为合理，已有5+人上警时建议不上警**
+- 根据当前上警人数灵活决策
 
 请问你是否要参与警长竞选（上警）？
 请回答：是 或 否"""
@@ -1071,15 +1080,23 @@ class WerewolfGame:
 
         for candidate in candidates:
             context = {"is_withdraw_decision": True}
+            
+            # 统计当前退水人数
+            withdrawn_count = len(withdrawn_candidates)
+            withdrawn_info = f"\n目前已有 {withdrawn_count} 人退水。" if withdrawn_count > 0 else "\n目前还没有人退水。"
+            
             prompt = f"""竞选发言已结束，现在是退水环节。你可以选择退出警长竞选（退水）。
 
-当前上警玩家：{', '.join([f'玩家{p.player_id}' for p in candidates])}
+当前上警玩家：{', '.join([f'玩家{p.player_id}' for p in candidates])}（共{len(candidates)}人）
+{withdrawn_info}
 
 ⚠️ 退水考虑因素：
-- 如果你是狼人，听到真预言家跳了，可能需要退水
-- 如果你是好人，但觉得其他候选人更合适，可以退水
-- 如果你是神职，但不想暴露，可以退水
-- 退水会让你看起来可疑，但也可能是战术性选择
+- 如果你是真预言家，通常不应该退水
+- 如果你是其他神职或村民，根据场上情况决定
+- **退水会让你看起来可疑**，除非有充分理由，否则不建议退水
+- 如果已有多人退水，更不应该轻易退水
+
+⚠️ 通常情况：大部分候选人不会退水，除非有特殊原因
 
 请问你是否要退水（退出竞选）？
 请回答：退水 或 不退"""
