@@ -16,17 +16,17 @@ class LLMClient:
         "us.anthropic.claude-opus-4-20250514-v1:0"
     ]
 
-    # 9个玩家的默认模型分配（仅使用Claude系列可用模型）
+    # 9个玩家的默认模型分配（打乱身份顺序，只使用Sonnet4/4.5和Opus4/4.1）
     DEFAULT_MODEL_ASSIGNMENT = {
-        "狼人1": "us.anthropic.claude-opus-4-20250514-v1:0",
-        "狼人2": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        "狼人3": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-        "预言家": "us.anthropic.claude-opus-4-1-20250805-v1:0",
-        "女巫": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-        "猎人": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        "村民1": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        "村民2": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-        "村民3": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        "狼人1": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "狼人2": "us.anthropic.claude-opus-4-1-20250805-v1:0",
+        "狼人3": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "预言家": "us.anthropic.claude-opus-4-20250514-v1:0",
+        "女巫": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "猎人": "us.anthropic.claude-opus-4-1-20250805-v1:0",
+        "村民1": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "村民2": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "村民3": "us.anthropic.claude-opus-4-20250514-v1:0"
     }
 
     def __init__(self):

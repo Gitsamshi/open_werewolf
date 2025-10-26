@@ -64,23 +64,24 @@ class WerewolfGame:
             self.players.append(player)
 
     def _assign_roles(self):
-        """分配角色"""
-        # 创建角色列表，按照玩家顺序对应
-        # 玩家1-3是狼人，玩家4是预言家，玩家5是女巫，玩家6是猎人，玩家7-9是村民
+        """分配角色（随机打乱）"""
+        # 创建角色列表
         roles = [
-            create_role(RoleType.WEREWOLF),      # 玩家1/狼人1
-            create_role(RoleType.WEREWOLF),      # 玩家2/狼人2
-            create_role(RoleType.WEREWOLF),      # 玩家3/狼人3
-            create_role(RoleType.SEER),          # 玩家4/预言家
-            create_role(RoleType.WITCH),         # 玩家5/女巫
-            create_role(RoleType.HUNTER),        # 玩家6/猎人
-            create_role(RoleType.VILLAGER),      # 玩家7/村民1
-            create_role(RoleType.VILLAGER),      # 玩家8/村民2
-            create_role(RoleType.VILLAGER)       # 玩家9/村民3
+            create_role(RoleType.WEREWOLF),      # 狼人1
+            create_role(RoleType.WEREWOLF),      # 狼人2
+            create_role(RoleType.WEREWOLF),      # 狼人3
+            create_role(RoleType.SEER),          # 预言家
+            create_role(RoleType.WITCH),         # 女巫
+            create_role(RoleType.HUNTER),        # 猎人
+            create_role(RoleType.VILLAGER),      # 村民1
+            create_role(RoleType.VILLAGER),      # 村民2
+            create_role(RoleType.VILLAGER)       # 村民3
         ]
 
-        # 直接分配，不打乱（保持玩家名称与角色一致）
-        # 注意：这样玩家名称会准确反映角色，便于调试和观察
+        # 随机打乱角色列表
+        random.shuffle(roles)
+
+        # 分配角色给玩家
         for player, role in zip(self.players, roles):
             player.assign_role(role)
 
@@ -385,14 +386,9 @@ class WerewolfGame:
 
         poison_target = None
         used_potion_tonight = False  # 标记今晚是否已使用药水
+        knows_kill_target = False  # 标记女巫是否知道刀口信息
 
-        # 女巫获得信息
-        if wolf_kill_target:
-            info = f"今晚玩家{wolf_kill_target.player_id}被狼人击杀。"
-        else:
-            info = "今晚没有人被狼人击杀。"
-
-        # 询问是否使用解药
+        # 询问是否使用解药（只有在有解药且有人被刀时才询问）
         if witch_role.has_antidote and wolf_kill_target:
             # 检查是否是自己
             is_self = (wolf_kill_target.player_id == witch.player_id)
@@ -400,7 +396,12 @@ class WerewolfGame:
             # 如果是自己且不能自救，则不询问
             if is_self and witch_role.cannot_save_self:
                 print(f"女巫被击杀，但不能自救")
+                # 女巫被自己刀了但不能自救，不告知具体信息
             else:
+                # 只有在询问解药时才告知刀口信息
+                knows_kill_target = True
+                info = f"今晚玩家{wolf_kill_target.player_id}被狼人击杀。"
+
                 prompt = f"""{info}
 你还有解药，是否使用解药救人？（回答：是 或 否）"""
 
@@ -415,14 +416,28 @@ class WerewolfGame:
 
                         if isinstance(witch, AIPlayer):
                             witch.add_memory(f"第{self.day_count}晚：使用解药救了玩家{saved_player.player_id}")
+                else:
+                    # 女巫选择不救，记录她知道了刀口但选择不救
+                    if isinstance(witch, AIPlayer):
+                        witch.add_memory(f"第{self.day_count}晚：得知玩家{wolf_kill_target.player_id}被刀，选择不用解药")
 
         # 询问是否使用毒药（只有在今晚未使用解药的情况下才能使用）
         if witch_role.has_poison and not used_potion_tonight:
             other_players = [p for p in self.players
                            if p.is_alive and p.player_id != witch.player_id]
 
-            prompt = f"""{info}
+            # 如果女巫不知道刀口信息，则不告诉她
+            if knows_kill_target:
+                info = f"今晚玩家{wolf_kill_target.player_id}被狼人击杀。"
+                prompt = f"""{info}
 你还有毒药，是否使用毒药毒人？（回答玩家编号，或回答：否）
+
+存活的其他玩家：
+{chr(10).join([f'  玩家{p.player_id} - {p.name}' for p in other_players])}"""
+            else:
+                # 女巫不知道刀口，不告诉她具体信息
+                prompt = f"""你还有毒药，是否使用毒药毒人？（回答玩家编号，或回答：否）
+注意：你没有解药了（或选择不查看刀口），所以不知道今晚谁被刀。
 
 存活的其他玩家：
 {chr(10).join([f'  玩家{p.player_id} - {p.name}' for p in other_players])}"""
@@ -677,12 +692,14 @@ class WerewolfGame:
         for player in alive_players:
             votable_players = [p for p in alive_players if p.player_id != player.player_id]
 
-            context = {"options": [f"玩家{p.player_id}" for p in votable_players]}
+            # 不使用序号，直接列出玩家编号
+            context = {"votable_player_ids": [p.player_id for p in votable_players]}
             prompt = f"""现在是投票阶段。
 
 ⚠️ 注意：这是秘密投票，你不知道其他玩家投了谁。
 
 存活的玩家：{', '.join([f'玩家{p.player_id}' for p in alive_players])}
+你可以投票的玩家编号：{', '.join([str(p.player_id) for p in votable_players])}
 
 ⚠️ 投票策略：
 **首要目标**：选择最有利于你的阵营获胜的投票！
@@ -700,7 +717,7 @@ class WerewolfGame:
 
 **判断优先级**：获胜 > 战术需要 > 保持逻辑一致性
 
-请投票放逐一名玩家（只需回答玩家编号，如：1）："""
+请投票放逐一名玩家（直接回答玩家编号）："""
 
             decision = player.make_decision(prompt, context)
             target = self._parse_player_id(decision, votable_players)
